@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StockPulse Admin</title><link rel="stylesheet" href="style.css">
+<style>
+body{padding:20px}.admin-wrap{max-width:1100px;margin:auto}.admin-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.admin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.admin-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px;padding:18px}.admin-value{font-size:28px;font-weight:800}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.toolbar input,.toolbar select{background:var(--input-bg);color:var(--text-primary);border:1px solid var(--input-border);padding:10px;border-radius:10px}.table-wrap{overflow:auto;background:var(--bg-card);border:1px solid var(--border-color);border-radius:16px}.users-table{width:100%;border-collapse:collapse}.users-table th,.users-table td{padding:11px;border-bottom:1px solid var(--border-color);text-align:left;white-space:nowrap}.plan-pro{color:var(--success-color);font-weight:800}.plan-free{color:var(--text-muted);font-weight:700}.btn{border:0;border-radius:9px;padding:8px 12px;cursor:pointer;font-weight:700}.btn-pro{background:var(--primary-color);color:#fff}.btn-danger{background:var(--danger-color);color:#fff}.btn-muted{background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color)}#login{max-width:500px;margin:12vh auto;text-align:center}.hidden{display:none!important}@media(max-width:700px){.admin-grid{grid-template-columns:repeat(2,1fr)}}
+</style></head>
+<body>
+<div id="login" class="admin-card"><h2>🛡️ StockPulse Admin</h2><p id="login-msg">Checking administrator access…</p></div>
+<div id="admin" class="admin-wrap hidden">
+  <div class="admin-head"><div><h1>StockPulse Admin</h1><div id="admin-email" style="color:var(--text-muted)"></div></div><button class="btn btn-muted" onclick="location.href='index.html'">← App</button></div>
+  <div class="admin-grid">
+    <div class="admin-card"><div>Total Users</div><div id="m-total" class="admin-value">—</div></div>
+    <div class="admin-card"><div>Pro Users</div><div id="m-pro" class="admin-value">—</div></div>
+    <div class="admin-card"><div>Free Users</div><div id="m-free" class="admin-value">—</div></div>
+    <div class="admin-card"><div>Expiring ≤ 7d</div><div id="m-exp" class="admin-value">—</div></div>
+  </div>
+  <div class="toolbar"><input id="search" placeholder="Search email / UID"><select id="filter"><option value="all">All</option><option value="free">Free</option><option value="pro">Pro</option><option value="expired">Expired</option></select><button class="btn btn-muted" onclick="loadUsers()">Refresh</button></div>
+  <div class="table-wrap"><table class="users-table"><thead><tr><th>Email</th><th>UID</th><th>Plan</th><th>Expiry</th><th>Action</th></tr></thead><tbody id="users-body"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+</div>
+<script src="config.js"></script><script src="firebase-app-placeholder.js" onerror="this.remove()"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script><script src="firebase-config.js"></script>
+<script src="admin.js"></script>
+</body></html>
