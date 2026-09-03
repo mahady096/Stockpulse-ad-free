@@ -143,6 +143,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   const request = event.request;
 
+  // Service Worker নিজে কখনো cache হবে না; browser যেন সর্বশেষ sw.js
+  // নিয়মিত check করতে পারে এবং নতুন version activate করতে পারে।
+  if (url.pathname === '/sw.js') {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
   // Supabase contains user-specific application data.
   // NEVER put Supabase responses into the shared service-worker cache.
   if (url.hostname.includes('supabase')) {
@@ -182,27 +189,24 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // স্ট্যাটিক রিসোর্স – ক্যাশ ফার্স্ট
+  // স্ট্যাটিক রিসোর্স – নেটওয়ার্ক ফার্স্ট, ক্যাশ ফ্যালব্যাক
+  // Online থাকলে GitHub/Cloudflare-এর সর্বশেষ JS/CSS/asset আগে নেওয়া হবে।
+  // এতে index.html পরিবর্তন না করেও deployed file update App-এ পৌঁছাবে।
   if (urlsToCache.some(path => url.pathname === path) ||
       url.pathname.match(/\.(css|js|png|jpg|svg|woff2?|json|ico)$/)) {
-    
     event.respondWith(
-      caches.match(request)
-        .then(response => {
-          if (response) return response;
-          return fetch(request).then(fetchRes => {
-            if (fetchRes && fetchRes.status === 200) {
-              const clone = fetchRes.clone();
-              caches.open(DYNAMIC_CACHE).then(cache => {
-                cache.put(request, clone);
-              });
-            }
-            return fetchRes;
-          });
+      fetch(request)
+        .then(fetchRes => {
+          if (fetchRes && fetchRes.status === 200 && request.method === 'GET') {
+            const clone = fetchRes.clone();
+            caches.open(DYNAMIC_CACHE).then(cache => cache.put(request, clone));
+          }
+          return fetchRes;
         })
-        .catch(() => {
+        .catch(() => caches.match(request).then(cached => {
+          if (cached) return cached;
           return caches.match('/index.html');
-        })
+        }))
     );
     return;
   }
