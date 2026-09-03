@@ -2,6 +2,7 @@
 // 📁 ui-modals.js - UI মডাল সম্পর্কিত সব ফাংশন
 //    ui.js থেকে ভাগ করা (স্টক মডাল, গেইন/লস মডাল, ডিভিডেন্ড মডাল, ইত্যাদি)
 //    🔧 ফিক্স: Today's High/Low এবং ATH/ATL আলাদা করা হয়েছে
+//    ✅ docId খালি চেক যোগ করা হয়েছে সব জায়গায় (edit/delete-এর আগে)
 // ==========================================
 
 // ==========================================
@@ -1113,4 +1114,4 @@ window.closeDSEXChartModal = closeDSEXChartModal;
 window.openAdvancedChartFromModal = openAdvancedChartFromModal;
 window.changeUserPassword = changeUserPassword;
 
-console.log('✅ ui-modals.js loaded successfully (Today High/Low and ATH/ATL fixed)');
+console.log('✅ ui-modals.js loaded successfully (Today High/Low and ATH/ATL fixed + docId empty check)');

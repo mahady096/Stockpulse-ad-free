@@ -24,6 +24,45 @@
             .replace(/'/g, '&#039;');
     }
 
+    // Record identity token: Supabase rows may not expose an `id` column.
+    // Keep enough immutable fields to safely target the exact user's row.
+    function makeRecordToken(item, type, ticker) {
+        const raw = {
+            id: item?.id ?? item?.doc_id ?? item?.docId ?? '',
+            type,
+            ticker: String(ticker || item?.share_name || item?.shareName || '').trim().toUpperCase(),
+            quantity: type === 'BUY' ? (item?.quantity ?? 0) : (item?.quantity_sold ?? item?.quantitySold ?? 0),
+            price: type === 'BUY' ? (item?.buy_price ?? item?.buyPrice ?? 0) : (item?.sell_price ?? item?.sellPrice ?? 0),
+            date: item?.date ?? '',
+            created_at: item?.created_at ?? item?.createdAt ?? ''
+        };
+        return encodeURIComponent(JSON.stringify(raw));
+    }
+
+    function decodeRecordToken(value) {
+        try {
+            const decoded = JSON.parse(decodeURIComponent(String(value || '')));
+            return decoded && typeof decoded === 'object' ? decoded : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function applySupabaseIdentity(query, record, userId) {
+        query = query.eq('user_id', userId);
+        if (record?.id) return query.eq('id', record.id);
+        query = query.eq('share_name', record.ticker);
+        if (record?.created_at) query = query.eq('created_at', record.created_at);
+        else if (record?.date) query = query.eq('date', record.date);
+        if (record?.quantity !== undefined) {
+            query = query.eq(record.type === 'BUY' ? 'quantity' : 'quantity_sold', record.quantity);
+        }
+        if (record?.price !== undefined) {
+            query = query.eq(record.type === 'BUY' ? 'buy_price' : 'sell_price', record.price);
+        }
+        return query;
+    }
+
     // ==========================================
     // ১. Analysis Stat - সাজেশন ও জেনারেট
     // ==========================================
@@ -364,15 +403,15 @@
                 hasData = true;
                 const qty = item.quantity || 0;
                 const price = item.buyPrice || item.buy_price || 0;
-                const safeId = escapeHtmlTA(item.id);
-                html += `<tr><td>BUY</td><td>${qty}</td><td>৳${price.toFixed(2)}</td><td><button onclick="showEditForm('${safeId}','BUY',${qty},${price})">Edit</button> <button onclick="deleteRecord('${safeId}','BUY','${safeTicker}')">Delete</button></td></tr>`;
+                const recordToken = makeRecordToken(item, 'BUY', ticker);
+                html += `<tr><td>BUY</td><td>${qty}</td><td>৳${price.toFixed(2)}</td><td><button onclick="showEditForm('${recordToken}','BUY',${qty},${price})">Edit</button> <button onclick="deleteRecord('${recordToken}','BUY','${safeTicker}')">Delete</button></td></tr>`;
             });
             sellData.forEach(item => {
                 hasData = true;
                 const qty = item.quantitySold || item.quantity_sold || 0;
                 const price = item.sellPrice || item.sell_price || 0;
-                const safeId = escapeHtmlTA(item.id);
-                html += `<tr><td>SELL</td><td>${qty}</td><td>৳${price.toFixed(2)}</td><td><button onclick="showEditForm('${safeId}','SELL',${qty},${price})">Edit</button> <button onclick="deleteRecord('${safeId}','SELL','${safeTicker}')">Delete</button></td></tr>`;
+                const recordToken = makeRecordToken(item, 'SELL', ticker);
+                html += `<tr><td>SELL</td><td>${qty}</td><td>৳${price.toFixed(2)}</td><td><button onclick="showEditForm('${recordToken}','SELL',${qty},${price})">Edit</button> <button onclick="deleteRecord('${recordToken}','SELL','${safeTicker}')">Delete</button></td></tr>`;
             });
             html += `</tbody></table>`;
             if (listContainer) listContainer.innerHTML = hasData ? html : "<p>No records found.</p>";
@@ -403,8 +442,10 @@
     // ✅ ফিক্স: user_id ownership চেক (Supabase + Firebase, BUY ও SELL দুটোতেই)
     // ==========================================
     window.saveEditedRecord = async function() {
-        const id = document.getElementById('edit-doc-id').value;
+        const rawRecord = document.getElementById('edit-doc-id').value;
         const type = document.getElementById('edit-doc-type').value;
+        const record = decodeRecordToken(rawRecord) || { id: rawRecord, type, ticker: '', quantity: undefined, price: undefined };
+        const id = record.id || '';
         const qty = Number(document.getElementById('edit-input-qty').value);
         const price = Number(document.getElementById('edit-input-price').value);
         const ticker = document.getElementById('modal-ticker-title')?.innerText || '';
@@ -426,16 +467,13 @@
             if (type === 'BUY') {
                 // ---------- Supabase: user_id ফিল্টার সহ update ----------
                 if (typeof supabase !== 'undefined' && supabase) {
-                    const { error, data } = await supabase
-                        .from('portfolios')
-                        .update({ quantity: qty, buy_price: price })
-                        .eq('id', id)
-                        .eq('user_id', user.uid)   // ✅ শুধু নিজের রেকর্ড আপডেট হবে
-                        .select();
+                    let query = supabase.from('portfolios').update({ quantity: qty, buy_price: price });
+                    query = applySupabaseIdentity(query, { ...record, type: 'BUY' }, user.uid);
+                    const { error, data } = await query.select();
                     if (!error && data && data.length > 0) updated = true;
                 }
                 // ---------- Firebase: ownership ভেরিফাই করে তারপর update ----------
-                if (typeof db !== 'undefined') {
+                if (typeof db !== 'undefined' && id) {
                     try {
                         const docRef = db.collection("portfolios").doc(id);
                         const docSnap = await docRef.get();
@@ -457,29 +495,23 @@
             } else {
                 // ---------- Supabase: user_id ফিল্টার সহ update (SELL) ----------
                 if (typeof supabase !== 'undefined' && supabase) {
-                    const { data: ownedRow } = await supabase
-                        .from('sales_history')
-                        .select('buy_price')
-                        .eq('id', id)
-                        .eq('user_id', user.uid)   // ✅ ownership ভেরিফাই করে তবেই buy_price পড়া হচ্ছে
-                        .single();
+                    let ownedQuery = supabase.from('sales_history').select('buy_price');
+                    ownedQuery = applySupabaseIdentity(ownedQuery, { ...record, type: 'SELL' }, user.uid);
+                    const { data: ownedRow } = await ownedQuery.maybeSingle();
                     if (ownedRow) {
                         const originalBuyPrice = ownedRow.buy_price || 0;
-                        const { error, data } = await supabase
-                            .from('sales_history')
-                            .update({
-                                quantity_sold: qty,
-                                sell_price: price,
-                                profit_or_loss: (price - originalBuyPrice) * qty
-                            })
-                            .eq('id', id)
-                            .eq('user_id', user.uid)   // ✅ শুধু নিজের রেকর্ড আপডেট হবে
-                            .select();
+                        let query = supabase.from('sales_history').update({
+                            quantity_sold: qty,
+                            sell_price: price,
+                            profit_or_loss: (price - originalBuyPrice) * qty
+                        });
+                        query = applySupabaseIdentity(query, { ...record, type: 'SELL' }, user.uid);
+                        const { error, data } = await query.select();
                         if (!error && data && data.length > 0) updated = true;
                     }
                 }
                 // ---------- Firebase: ownership ভেরিফাই করে তারপর update ----------
-                if (typeof db !== 'undefined') {
+                if (typeof db !== 'undefined' && id) {
                     try {
                         const docRef = db.collection("sales_history").doc(id);
                         const docSnap = await docRef.get();
@@ -541,19 +573,18 @@
 
             // ---------- Supabase: user_id ফিল্টার সহ delete ----------
             if (typeof supabase !== 'undefined' && supabase) {
-                const { error, data } = await supabase
-                    .from(tableName)
-                    .delete()
-                    .eq('id', id)
-                    .eq('user_id', user.uid)   // ✅ শুধু নিজের রেকর্ড ডিলিট হবে
-                    .select();
+                const record = decodeRecordToken(id) || { id: id, type, ticker: String(ticker || '').trim().toUpperCase() };
+                let query = supabase.from(tableName).delete();
+                query = applySupabaseIdentity(query, { ...record, type }, user.uid);
+                const { error, data } = await query.select();
                 if (!error && data && data.length > 0) deleted = true;
             }
 
             // ---------- Firebase: delete-এর আগে ownership ভেরিফাই ----------
-            if (typeof db !== 'undefined') {
+            if (typeof db !== 'undefined' && decodeRecordToken(id)?.id) {
                 try {
-                    const docRef = db.collection(tableName).doc(id);
+                    const firebaseId = decodeRecordToken(id).id;
+                    const docRef = db.collection(tableName).doc(firebaseId);
                     const docSnap = await docRef.get();
                     if (docSnap.exists && docSnap.data().userId === user.uid) {
                         await docRef.delete();

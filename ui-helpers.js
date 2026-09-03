@@ -1792,6 +1792,10 @@ function renderTradeTable(transactions) {
 // - Firebase-এ update-এর আগে ownership ভেরিফাই (userId চেক) — IDOR প্রতিরোধ,
 //   কারণ এই কালেকশনগুলোতে RLS নেই (Firestore Security Rules-এর উপর নির্ভরশীল)
 window.editTrade = async function(id, type) {
+    if (!id || !String(id).trim()) {
+        if (typeof showToast === 'function') showToast('❌ Record ID missing. Cannot edit.', 'error');
+        return;
+    }
     const user = auth && auth.currentUser ? auth.currentUser : null;
     if (!user) {
         if (typeof showToast === 'function') showToast('Please login first', 'error');
@@ -1867,6 +1871,10 @@ window.editTrade = async function(id, type) {
 
 // ✅ ফিক্স v2: delete-এর আগে ownership ভেরিফাই (IDOR প্রতিরোধ)
 window.deleteTrade = async function(id, type) {
+    if (!id || !String(id).trim()) {
+        if (typeof showToast === 'function') showToast('❌ Record ID missing. Cannot delete.', 'error');
+        return;
+    }
     if (!confirm("Are you sure you want to delete this transaction?")) return;
 
     const user = auth && auth.currentUser ? auth.currentUser : null;

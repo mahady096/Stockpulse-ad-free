@@ -23,6 +23,23 @@
             .replace(/'/g, '&#039;');
     }
 
+    function makeBuyRecordToken(item) {
+        return encodeURIComponent(JSON.stringify({
+            id: item?.id ?? item?.doc_id ?? item?.docId ?? '',
+            type: 'BUY',
+            ticker: String(item?.share_name || item?.shareName || '').trim().toUpperCase(),
+            quantity: item?.quantity ?? 0,
+            price: item?.buy_price ?? item?.buyPrice ?? 0,
+            date: item?.date ?? '',
+            created_at: item?.created_at ?? item?.createdAt ?? ''
+        }));
+    }
+
+    function decodeBuyRecordToken(value) {
+        try { const x = JSON.parse(decodeURIComponent(String(value || ''))); return x && typeof x === 'object' ? x : null; }
+        catch (_) { return null; }
+    }
+
     // ==========================================
     // ১. Buy History
     // ==========================================
@@ -124,7 +141,7 @@
                 totalQty += qty;
                 totalCost += total;
 
-                const safeId = escapeHtmlTH(item.id);
+                const safeId = makeBuyRecordToken(item);
 
                 html += `<tr>
                     <td style="padding: 8px;">${dateStr}</td>
@@ -159,6 +176,8 @@
     // ✅ ফিক্স: isNaN() ভ্যালিডেশন + user_id ownership চেক
     // ==========================================
     window.editBuyRecord = async function(docId) {
+        const record = decodeBuyRecordToken(docId) || { id: docId };
+        const firebaseId = record.id || '';
         const newQtyRaw = prompt("Enter new quantity:");
         if (newQtyRaw === null) return; // ইউজার Cancel চেপেছে
         const newPriceRaw = prompt("Enter new price:");
@@ -184,19 +203,22 @@
 
             // ---------- Supabase: user_id ফিল্টার সহ update ----------
             if (typeof supabase !== 'undefined' && supabase) {
-                const { error, data } = await supabase
-                    .from('portfolios')
-                    .update({ quantity: newQty, buy_price: newPrice })
-                    .eq('id', docId)
-                    .eq('user_id', user.uid)   // ✅ শুধু নিজের রেকর্ড আপডেট হবে
-                    .select();
+                let query = supabase.from('portfolios').update({ quantity: newQty, buy_price: newPrice }).eq('user_id', user.uid);
+                if (record.id) query = query.eq('id', record.id);
+                else {
+                    query = query.eq('share_name', record.ticker);
+                    if (record.created_at) query = query.eq('created_at', record.created_at);
+                    else if (record.date) query = query.eq('date', record.date);
+                    query = query.eq('quantity', record.quantity).eq('buy_price', record.price);
+                }
+                const { error, data } = await query.select();
                 if (!error && data && data.length > 0) updated = true;
             }
 
             // ---------- Firebase: update-এর আগে ownership ভেরিফাই ----------
-            if (typeof db !== 'undefined') {
+            if (typeof db !== 'undefined' && firebaseId) {
                 try {
-                    const docRef = db.collection('portfolios').doc(docId);
+                    const docRef = db.collection('portfolios').doc(firebaseId);
                     const docSnap = await docRef.get();
                     if (docSnap.exists && docSnap.data().userId === user.uid) {
                         await docRef.update({
@@ -231,6 +253,8 @@
     // ✅ ফিক্স: user_id ownership চেক (IDOR প্রতিরোধ)
     // ==========================================
     window.deleteBuyRecord = async function(docId) {
+        const record = decodeBuyRecordToken(docId) || { id: docId };
+        const firebaseId = record.id || '';
         if (!confirm('Are you sure you want to delete this buy record?')) return;
 
         const user = auth && auth.currentUser ? auth.currentUser : null;
@@ -244,19 +268,22 @@
 
             // ---------- Supabase: user_id ফিল্টার সহ delete ----------
             if (typeof supabase !== 'undefined' && supabase) {
-                const { error, data } = await supabase
-                    .from('portfolios')
-                    .delete()
-                    .eq('id', docId)
-                    .eq('user_id', user.uid)   // ✅ শুধু নিজের রেকর্ড ডিলিট হবে
-                    .select();
+                let query = supabase.from('portfolios').delete().eq('user_id', user.uid);
+                if (record.id) query = query.eq('id', record.id);
+                else {
+                    query = query.eq('share_name', record.ticker);
+                    if (record.created_at) query = query.eq('created_at', record.created_at);
+                    else if (record.date) query = query.eq('date', record.date);
+                    query = query.eq('quantity', record.quantity).eq('buy_price', record.price);
+                }
+                const { error, data } = await query.select();
                 if (!error && data && data.length > 0) deleted = true;
             }
 
             // ---------- Firebase: delete-এর আগে ownership ভেরিফাই ----------
-            if (typeof db !== 'undefined') {
+            if (typeof db !== 'undefined' && firebaseId) {
                 try {
-                    const docRef = db.collection('portfolios').doc(docId);
+                    const docRef = db.collection('portfolios').doc(firebaseId);
                     const docSnap = await docRef.get();
                     if (docSnap.exists && docSnap.data().userId === user.uid) {
                         await docRef.delete();
