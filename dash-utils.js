@@ -107,8 +107,8 @@ async function fetchPortfolioTimelineData(startDate = null, endDate = null, port
                 try {
                     const { data, error } = await supabase
                         .from('history_dse')
-                        .select('code, date, ltp')
-                        .in('code', chunk)
+                        .select('ticker, date, ltp')
+                        .in('ticker', chunk)
                         .gte('date', startDateStr)
                         .lte('date', endDateStr)
                         .order('date', { ascending: true });
@@ -118,7 +118,7 @@ async function fetchPortfolioTimelineData(startDate = null, endDate = null, port
                             const dateStr = item.date;
                             if (price > 0) {
                                 if (!priceMap.has(dateStr)) priceMap.set(dateStr, new Map());
-                                priceMap.get(dateStr).set(item.code, price);
+                                priceMap.get(dateStr).set(item.ticker, price);
                             }
                         });
                     }
