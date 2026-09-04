@@ -29,12 +29,12 @@ ul{list-style:none;padding:0;margin:20px 0}li{padding:10px 0;border-bottom:1px s
 <script src="firebase-config.js"></script>
 <script>
 (function(){
-  const ADMIN_EMAIL='admin@gmail.com';
+  const ADMIN_EMAIL='admin.stockpulse@gmail.com';
   const btn=document.getElementById('buy');
   btn.addEventListener('click',function(){
     const user=window.auth&&window.auth.currentUser;
     const email=user?.email||''; const uid=user?.uid||'';
-    const subject='stock pulse pro';
+    const subject='stockpulse pro';
     const body='আমি StockPulse Pro কিনতে চাই.\n\nEmail: '+email+'\nUID: '+uid+'\n\nদয়া করে পেমেন্টের নির্দেশনা দিন।';
     window.location.href='mailto:'+ADMIN_EMAIL+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
   });
