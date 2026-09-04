@@ -12,6 +12,44 @@
 // ১. ড্যাশবোর্ড ডেটা লোড (মূল ফাংশন)
 // ==========================================
 
+async function calculateUnifiedPortfolioTotals(unifiedData, priceDataMap = new Map()) {
+    const stockMap = new Map();
+    let totalCurrentValue = 0;
+    let totalInvestment = 0;
+    let totalRemainingQty = 0;
+
+    if (!unifiedData || !Array.isArray(unifiedData.stockDetails)) {
+        return { totalCurrentValue: 0, totalInvestment: 0, totalProfitLoss: 0, totalRemainingQty: 0, stockMap };
+    }
+
+    for (const stock of unifiedData.stockDetails) {
+        const ticker = stock.ticker;
+        const priceData = priceDataMap.get(ticker);
+        let currentPrice = Number(priceData?.currentPrice) || 0;
+        if (currentPrice <= 0) currentPrice = Number(await getUnifiedPrice(ticker)) || 0;
+
+        const qty = Number(stock.totalQty) || 0;
+        const cost = Number(stock.totalCost) || 0;
+        const currentValue = qty * currentPrice;
+        const totalGL = currentValue - cost;
+
+        stockMap.set(ticker, { qty, cost, currentPrice, currentValue, totalGL });
+        totalCurrentValue += currentValue;
+        totalInvestment += cost;
+        totalRemainingQty += qty;
+    }
+
+    return {
+        totalCurrentValue,
+        totalInvestment,
+        totalProfitLoss: totalCurrentValue - totalInvestment,
+        totalRemainingQty,
+        stockMap
+    };
+}
+
+window.calculateUnifiedPortfolioTotals = calculateUnifiedPortfolioTotals;
+
 async function loadDashboardData(portfolioId = null, forceRefresh = false) {
     const today = new Date();
     const thirtyDaysAgo = new Date();
@@ -30,7 +68,7 @@ async function loadDashboardData(portfolioId = null, forceRefresh = false) {
     window.currentDashboardPortfolioId = portfolioId;
 
     // ---------- ক্যাশ চেক ----------
-    const cacheKey = `dashboard_${user.uid}_${portfolioId || 'all'}`;
+    const cacheKey = `dashboard_v2_${user.uid}_${portfolioId || 'all'}`;
     if (!forceRefresh) {
         try {
             const cached = sessionStorage.getItem(cacheKey);
@@ -84,24 +122,26 @@ async function loadDashboardData(portfolioId = null, forceRefresh = false) {
         let totalProfitLoss = 0;
         let totalRemainingQty = 0;
 
-        // প্রাইস ম্যাপ তৈরি করুন (অ্যালার্ট চেকের জন্য)
+        // প্রাইস ম্যাপ + Total Value/Cost — Portfolio Performance-এর একই unified calculation
         let priceMap = new Map();
 
         if (unifiedData && unifiedData.stockDetails.length > 0) {
             const tickers = unifiedData.stockDetails.map(s => s.ticker);
             priceMap = await getLatestAndPreviousPrices(tickers);
 
-            for (let i = 0; i < unifiedData.stockDetails.length; i++) {
-                const stock = unifiedData.stockDetails[i];
-                const priceData = priceMap.get(stock.ticker);
-                let currentPrice = priceData?.currentPrice || 0;
-                if (currentPrice === 0) currentPrice = stock.avgBuyPriceWithCommission;
-                totalCurrentValue += stock.totalQty * currentPrice;
-                totalRemainingQty += stock.totalQty;
+            // IMPORTANT: Total Value এবং Total Cost-এর একমাত্র calculation source।
+            // stock.totalCost = remaining lots-এর commission-সহ cost,
+            // currentValue = remaining quantity × current market price।
+            const summary = await calculateUnifiedPortfolioTotals(unifiedData, priceMap);
+            totalCurrentValue = summary.totalCurrentValue;
+            totalInvestment = summary.totalInvestment;
+            totalProfitLoss = summary.totalProfitLoss;
+            totalRemainingQty = summary.totalRemainingQty;
 
-                // ==========================================
-                // 🔔 ধাপ ৩: অ্যালার্ট চেক করুন (প্রাইস লুপের ভেতরে)
-                // ==========================================
+            // অ্যালার্ট check-এর জন্য একই resolved current price ব্যবহার করুন।
+            for (const stock of unifiedData.stockDetails) {
+                const resolved = summary.stockMap.get(stock.ticker);
+                const currentPrice = resolved ? resolved.currentPrice : 0;
                 if (currentPrice > 0 && typeof notificationManager !== 'undefined' && notificationManager) {
                     try {
                         notificationManager.checkPriceAlerts(stock.ticker, currentPrice);
@@ -110,13 +150,6 @@ async function loadDashboardData(portfolioId = null, forceRefresh = false) {
                     }
                 }
             }
-
-            totalInvestment = unifiedData.totalInvestment;
-            totalProfitLoss = totalCurrentValue - totalInvestment;
-        } else {
-            totalInvestment = 0;
-            totalCurrentValue = 0;
-            totalProfitLoss = 0;
         }
 
         // ২. ড্যাশবোর্ড কার্ড আপডেট

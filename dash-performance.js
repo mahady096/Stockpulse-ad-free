@@ -19,7 +19,7 @@ async function loadPortfolioAnalysisTable(userId, portfolioId = null, forceRefre
     if (!userId) return;
 
     // ক্যাশ চেক (cachedAnalysisData ও lastAnalysisTime core.js থেকে)
-    const cacheKey = `analysis_${userId}_${portfolioId || 'all'}`;
+    const cacheKey = `analysis_v2_${userId}_${portfolioId || 'all'}`;
     let cached = null;
     try {
         const cachedStr = sessionStorage.getItem(cacheKey);
@@ -86,6 +86,9 @@ async function loadPortfolioAnalysisTable(userId, portfolioId = null, forceRefre
 
             const tickers = unifiedData.stockDetails.map(s => s.ticker);
             const priceDataMap = await getLatestAndPreviousPrices(tickers);
+            const unifiedSummary = (typeof calculateUnifiedPortfolioTotals === 'function')
+                ? await calculateUnifiedPortfolioTotals(unifiedData, priceDataMap)
+                : null;
 
             const portfolioDataForSorting = [];
             let grandTotalCost = 0,
@@ -98,7 +101,8 @@ async function loadPortfolioAnalysisTable(userId, portfolioId = null, forceRefre
             for (const stock of unifiedData.stockDetails) {
                 const ticker = stock.ticker;
                 const priceData = priceDataMap.get(ticker);
-                let currentPrice = priceData?.currentPrice || 0;
+                const sharedStock = unifiedSummary?.stockMap?.get(ticker);
+                let currentPrice = sharedStock ? sharedStock.currentPrice : (priceData?.currentPrice || 0);
                 if (currentPrice === 0) {
                     currentPrice = await getUnifiedPrice(ticker);
                 }
@@ -173,6 +177,13 @@ async function loadPortfolioAnalysisTable(userId, portfolioId = null, forceRefre
                 grandTotalDailyGL += totalStockDailyGL;
                 grandTotalGL += totalGL;
                 grandTotalRemainingQty += totalRemainingQty;
+            }
+
+            // Unified summary-কে authoritative total হিসেবে ব্যবহার করুন, যাতে Dashboard ও Performance এক হয়।
+            if (unifiedSummary) {
+                grandTotalCost = unifiedSummary.totalInvestment;
+                grandTotalCurrentValue = unifiedSummary.totalCurrentValue;
+                grandTotalGL = unifiedSummary.totalProfitLoss;
             }
 
             // ক্যাশ আপডেট (গ্লোবাল ভেরিয়েবল)
