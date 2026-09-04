@@ -140,8 +140,22 @@ self.addEventListener('activate', event => {
 // 🌐 ফেচ ইভেন্ট – স্মার্ট ক্যাশিং
 // ==========================================
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  // Only handle normal web requests. Browser extensions (chrome-extension://,
+  // moz-extension://, etc.) must stay outside this service worker's cache.
+  let url;
+  try {
+    url = new URL(event.request.url);
+  } catch (_) {
+    return;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
   const request = event.request;
+  // Never cache non-GET requests.
+  if (request.method !== 'GET') {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // Service Worker নিজে কখনো cache হবে না; browser যেন সর্বশেষ sw.js
   // নিয়মিত check করতে পারে এবং নতুন version activate করতে পারে।
@@ -168,8 +182,8 @@ self.addEventListener('fetch', event => {
           if (response && response.status === 200) {
             const clone = response.clone();
             caches.open(API_CACHE).then(cache => {
-              cache.put(request, clone);
-            });
+              return cache.put(request, clone);
+            }).catch(() => {});
           }
           return response;
         })
@@ -199,7 +213,7 @@ self.addEventListener('fetch', event => {
         .then(fetchRes => {
           if (fetchRes && fetchRes.status === 200 && request.method === 'GET') {
             const clone = fetchRes.clone();
-            caches.open(DYNAMIC_CACHE).then(cache => cache.put(request, clone));
+            caches.open(DYNAMIC_CACHE).then(cache => cache.put(request, clone)).catch(() => {});
           }
           return fetchRes;
         })
@@ -219,8 +233,8 @@ self.addEventListener('fetch', event => {
           if (response && response.status === 200) {
             const clone = response.clone();
             caches.open(DYNAMIC_CACHE).then(cache => {
-              cache.put(request, clone);
-            });
+              return cache.put(request, clone);
+            }).catch(() => {});
           }
           return response;
         })

@@ -108,7 +108,7 @@ async function fetchPortfolioTimelineData(startDate = null, endDate = null, port
                     const { data, error } = await supabase
                         .from('history_dse')
                         .select('code, date, ltp')
-                        .in('ticker', chunk)
+                        .in('code', chunk)
                         .gte('date', startDateStr)
                         .lte('date', endDateStr)
                         .order('date', { ascending: true });
